@@ -10,27 +10,39 @@ use nokhwa::{
     CallbackCamera,
 };
 use rand::{rngs::StdRng, Rng, SeedableRng};
+use sha2::{Digest, Sha256};
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// the image should will always be a PNG.
+    #[arg(short, long, default_value = "seed")]
+    seed: String,
 }
 
 #[derive(Subcommand)]
 enum Commands {
     /// Calculate seed from captured image and save it to a file.
     Save {
-        /// the image will always be saved as a PNG.
-        #[arg(default_value = "seed")]
-        seed_file: String,
+        #[command(subcommand)]
+        operation: Operation,
     },
     /// Load captured image and calculate a seed.
     Load {
-        /// the image will always be loaded as a PNG.
-        #[arg(default_value = "seed")]
-        seed_file: String,
+        #[command(subcommand)]
+        operation: Operation,
+    },
+}
+
+#[derive(Subcommand)]
+enum Operation {
+    RNG,
+    Hash {
+        /// message to be hashed
+        msg: String,
     },
 }
 
@@ -94,35 +106,45 @@ fn calculate_seed(image: RgbaImage) -> ([u8; 32], usize) {
 }
 
 fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+
+    cli.seed.push_str(".png");
 
     let image = match cli.command {
-        Commands::Save { mut seed_file } => {
-            seed_file.push_str(".png");
-            capture_image(&seed_file)
-        }
-        Commands::Load { mut seed_file } => {
-            seed_file.push_str(".png");
-            load_image(&seed_file)
-        }
+        Commands::Save { .. } => capture_image(&cli.seed),
+        Commands::Load { .. } => load_image(&cli.seed),
     }?;
+
+    let operation = match cli.command {
+        Commands::Save { operation, .. } => operation,
+        Commands::Load { operation, .. } => operation,
+    };
 
     let (seed, seed_num) = calculate_seed(image);
     let mut rng = StdRng::from_seed(seed);
 
-    println!("seed: {}", seed_num);
-    println!(
-        "random numbers: {:?}",
-        (0..10)
-            .map(|_| rng.gen_range(0..10))
-            .collect::<Vec<_>>()
-    );
-    println!(
-        "random bools: {:?}",
-        (0..10)
-            .map(|_| rng.gen_bool(0.5))
-            .collect::<Vec<_>>()
-    );
+    match operation {
+        Operation::RNG => {
+            println!("seed: {}", seed_num);
+            println!(
+                "random numbers: {:?}",
+                (0..10).map(|_| rng.gen_range(0..10)).collect::<Vec<_>>()
+            );
+            println!(
+                "random bools: {:?}",
+                (0..10).map(|_| rng.gen_bool(0.5)).collect::<Vec<_>>()
+            );
+        }
+        Operation::Hash { msg } => {
+            let hash = Sha256::new()
+                .chain_update(seed)
+                .chain_update(msg.into_bytes())
+                .finalize();
+
+            let hex_hash = base16ct::lower::encode_string(&hash);
+            println!("hash: {}", hex_hash);
+        }
+    }
 
     Ok(())
 }
