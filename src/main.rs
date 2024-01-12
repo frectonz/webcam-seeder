@@ -10,7 +10,10 @@ use nokhwa::{
     CallbackCamera,
 };
 use rand::{rngs::StdRng, Rng, SeedableRng};
+use rsa::{Pkcs1v15Encrypt, RsaPrivateKey, RsaPublicKey};
 use sha2::{Digest, Sha256};
+
+const RSA_BIT_SIZE: usize = 256;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -43,6 +46,14 @@ enum Operation {
     Hash {
         /// message to be hashed
         msg: String,
+    },
+    Encrypt {
+        /// message to be encrypt
+        plain: String,
+    },
+    Decrypt {
+        /// message to be decrypted
+        encrypted: String,
     },
 }
 
@@ -106,6 +117,8 @@ fn calculate_seed(image: RgbaImage) -> ([u8; 32], usize) {
 }
 
 fn main() -> Result<()> {
+    color_eyre::install()?;
+
     let mut cli = Cli::parse();
 
     cli.seed.push_str(".png");
@@ -121,10 +134,11 @@ fn main() -> Result<()> {
     };
 
     let (seed, seed_num) = calculate_seed(image);
-    let mut rng = StdRng::from_seed(seed);
 
     match operation {
         Operation::RNG => {
+            let mut rng = StdRng::from_seed(seed);
+
             println!("seed: {}", seed_num);
             println!(
                 "random numbers: {:?}",
@@ -143,6 +157,38 @@ fn main() -> Result<()> {
 
             let hex_hash = base16ct::lower::encode_string(&hash);
             println!("hash: {}", hex_hash);
+        }
+        Operation::Encrypt { plain } => {
+            let mut rng = StdRng::from_seed(seed);
+
+            let priv_key =
+                RsaPrivateKey::new(&mut rng, RSA_BIT_SIZE).wrap_err("failed to generate a key")?;
+            let pub_key = RsaPublicKey::from(&priv_key);
+
+            let plain = plain.into_bytes();
+            let enc_data = pub_key
+                .encrypt(&mut rng, Pkcs1v15Encrypt, &plain)
+                .expect("failed to encrypt");
+
+            let hex = base16ct::lower::encode_string(&enc_data);
+            println!("encrypted: {}", hex);
+        }
+        Operation::Decrypt { encrypted } => {
+            let mut rng = StdRng::from_seed(seed);
+
+            let priv_key =
+                RsaPrivateKey::new(&mut rng, RSA_BIT_SIZE).wrap_err("failed to generate a key")?;
+
+            let encrypted = base16ct::lower::decode_vec(&encrypted)
+                .wrap_err("failed to decrypt hex message")?;
+
+            let dec_data = priv_key
+                .decrypt(Pkcs1v15Encrypt, &encrypted)
+                .expect("failed to decrypt");
+
+            let plain = String::from_utf8(dec_data)
+                .wrap_err("failed to convert encrypted bytes to a string")?;
+            println!("decrypted: {}", plain);
         }
     }
 
