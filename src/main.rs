@@ -42,7 +42,7 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum Operation {
-    RNG,
+    Rng,
     Hash {
         /// message to be hashed
         msg: String,
@@ -136,7 +136,7 @@ fn main() -> Result<()> {
     let (seed, seed_num) = calculate_seed(image);
 
     match operation {
-        Operation::RNG => {
+        Operation::Rng => {
             let mut rng = StdRng::from_seed(seed);
 
             println!("seed: {}", seed_num);
@@ -179,8 +179,8 @@ fn main() -> Result<()> {
             let priv_key =
                 RsaPrivateKey::new(&mut rng, RSA_BIT_SIZE).wrap_err("failed to generate a key")?;
 
-            let encrypted = base16ct::lower::decode_vec(&encrypted)
-                .wrap_err("failed to decrypt hex message")?;
+            let encrypted =
+                base16ct::lower::decode_vec(encrypted).wrap_err("failed to decrypt hex message")?;
 
             let dec_data = priv_key
                 .decrypt(Pkcs1v15Encrypt, &encrypted)
