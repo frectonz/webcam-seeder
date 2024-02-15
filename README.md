@@ -5,5 +5,5 @@ Seed a random number generator using a webcam picture. Inspired by this Tom Scot
 ## Install
 
 ```sh
-cargo install webcam-seeder
+cargo install --git https://github.com/frectonz/webcam-seeder
 ```
